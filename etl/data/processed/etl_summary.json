@@ -1,0 +1,15 @@
+{
+  "clean_rows": 996172,
+  "sales_rows": 978604,
+  "return_rows": 17568,
+  "revenue_sales_gbp": 19029370.72,
+  "returns_gbp": 542371.21,
+  "balance_gbp": 18486999.51,
+  "sku_period_rows": 7870,
+  "sku_month_rows": 94440,
+  "rfm_rows": 8532,
+  "seasonal_sku_count": 525,
+  "short_history_count": 507,
+  "limited_base_count": 217,
+  "sales_both_periods": 6292
+}

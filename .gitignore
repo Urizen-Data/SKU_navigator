@@ -1,0 +1,19 @@
+# Excel — большой файл, воспроизводится из UCI
+*.xlsx
+*.xls
+~$*
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Внутренние материалы
+ТЗ/
+
+# Прочее
+.DS_Store
+Thumbs.db
