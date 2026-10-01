@@ -8,6 +8,22 @@
 
 **Стек:** Python · pandas · NumPy · Jupyter Notebook · Parquet · Power BI · Power Query · DAX
 
+## Дашборд
+
+### 1. Обзор магазина
+
+![Обзор магазина](Screenshots/sku_navigator_1.png)
+
+### 2. Отбор SKU — конструктор
+
+![Отбор SKU](Screenshots/sku_navigator_2.png)
+
+### 3. Карточка товара
+
+![Карточка товара](Screenshots/sku_navigator_3.png)
+
+**Файл дашборда:** [`Power BI/SKU_navigator.pbix`](Power%20BI/SKU_navigator.pbix)
+
 ## Бизнес-задача
 
 Британский интернет-магазин подарков и товаров для дома рассматривает сокращение примерно **20% товарных позиций**. Цель анализа — определить, какие товары важно сохранять в наличии, где стоит ограничить запас, а какие позиции можно рассматривать на вывод.
@@ -184,6 +200,10 @@ ETL переносит принятые правила исследования 
 SKU_navigator/
 ├── README.md
 ├── ТЗ/                                    # исключено из репозитория
+├── Screenshots/
+│   ├── sku_navigator_1.png                # Обзор магазина
+│   ├── sku_navigator_2.png                # Отбор SKU
+│   └── sku_navigator_3.png                # Карточка товара
 ├── notebooks/
 │   ├── SKU Навигатор.ipynb                # исследование: ABC/XYZ, RFM, BCG, сценарии
 │   ├── SKU ETL.ipynb                      # методика подготовки витрин
@@ -217,7 +237,7 @@ SKU_navigator/
 **Что попадает в репозиторий:**
 
 - ноутбуки, код ETL, справочники и все `*.parquet` витрины;
-- `README.md` и файл отчёта Power BI.
+- `README.md`, скриншоты и файл отчёта Power BI.
 
 **Что исключено через `.gitignore`:**
 
