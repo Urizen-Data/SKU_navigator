@@ -199,28 +199,26 @@ ETL переносит принятые правила исследования 
 ```text
 SKU_navigator/
 ├── README.md
-├── ТЗ/                                    # исключено из репозитория
 ├── Screenshots/
-│   ├── sku_navigator_1.png                # Обзор магазина
-│   ├── sku_navigator_2.png                # Отбор SKU
-│   └── sku_navigator_3.png                # Карточка товара
+│   ├── sku_navigator_1.png                
+│   ├── sku_navigator_2.png                
+│   └── sku_navigator_3.png               
 ├── notebooks/
-│   ├── SKU Навигатор.ipynb                # исследование: ABC/XYZ, RFM, BCG, сценарии
-│   ├── SKU ETL.ipynb                      # методика подготовки витрин
-│   └── .ipynb_checkpoints/                # исключено из репозитория
+│   ├── SKU Навигатор.ipynb             
+│   ├── SKU ETL.ipynb                 
 ├── etl/
 │   ├── __init__.py
-│   ├── config.py                          # пути, константы, пороги
-│   ├── extract.py                         # чтение исходных данных
-│   ├── clean.py                           # очистка и нормализация
-│   ├── features.py                        # признаки и классификации
-│   ├── marts.py                           # сборка витрин
-│   ├── pipeline.py                        # точка входа: python -m etl.pipeline
+│   ├── config.py                        
+│   ├── extract.py                      
+│   ├── clean.py                        
+│   ├── features.py                      
+│   ├── marts.py                     
+│   ├── pipeline.py                      
 │   ├── raw/
 │   │   ├── online_retail_II.xlsx          # исключён из репозитория (большой файл)
-│   │   └── online_retail_II.parquet       # хранится в репозитории
+│   │   └── online_retail_II.parquet       
 │   └── data/
-│       └── processed/                     # витрины для Power BI
+│       └── processed/                  
 │           ├── FactSales.parquet
 │           ├── MartSkuPeriod.parquet
 │           ├── MartSkuMonth.parquet
@@ -229,24 +227,11 @@ SKU_navigator/
 │           ├── DimCustomer.parquet
 │           ├── DimDate.parquet
 │           ├── DimPeriod.parquet
-│           └── etl_summary.json           # журнал выполнения ETL
+│           └── etl_summary.json       
 └── Power BI/
-    └── SKU_navigator.pbix                 # отчёт с моделью и DAX
+    └── SKU_navigator.pbix                
 ```
 
-**Что попадает в репозиторий:**
-
-- ноутбуки, код ETL, справочники и все `*.parquet` витрины;
-- `README.md`, скриншоты и файл отчёта Power BI.
-
-**Что исключено через `.gitignore`:**
-
-- папка `ТЗ/` — внутренние материалы, не относящиеся к коду;
-- `.ipynb_checkpoints/` — служебные чекпоинты Jupyter;
-- исходный Excel `online_retail_II.xlsx` — большой файл, который воспроизводится из UCI;
-- стандартный мусор Python (`__pycache__/`, `*.pyc`).
-
-Исходный Excel не хранится в репозитории: его можно скачать из UCI (ссылка выше) и положить в `etl/raw/`. Все остальные данные — `online_retail_II.parquet` и витрины — уже в репозитории, поэтому проект запускается без дополнительной подготовки.
 
 ### Как воспроизвести
 
