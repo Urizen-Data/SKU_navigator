@@ -166,8 +166,6 @@ def build_marts(clean: pd.DataFrame, features: dict) -> dict:
         "BCG_adapted",
     ]
 
-    # Проверяем, что все требуемые поля действительно есть в витрине.
-    # Если чего-то нет — падаем с понятным сообщением, а не молча теряем.
     missing = [c for c in sku_period_cols if c not in sku_period.columns]
     assert not missing, (
         f"В sku_period отсутствуют поля из плана дашборда: {missing}"
@@ -222,12 +220,29 @@ def validate(clean: pd.DataFrame, marts: dict) -> None:
     )
     assert np.allclose(rev_sku.values, rev_fact.values)
 
-    # ── Сезонность: 531 True в 2010/11, NA в 2009/10 ──
+    # ── Сверка возвратов: fact ↔ sku_period ──
+    returns_fact = fact.loc[fact["Amount"] < 0, "Amount"].abs().sum()
+    returns_sku = sku_period["negative_amount"].sum()
+    assert np.isclose(returns_fact, returns_sku), (
+        f"Возвраты не сходятся: fact = {returns_fact:.2f}, "
+        f"sku_period = {returns_sku:.2f}, "
+        f"разница = {returns_fact - returns_sku:.2f}"
+    )
+
+    # ── ABC/XYZ заполнены только у SKU с продажами ──
+    has_sales = sku_period["revenue"] > 0
+    assert sku_period.loc[
+        has_sales, ["StockCode", "Period", "ABC", "XYZ"]
+    ].notna().all().all(), (
+        "У SKU с продажами нет ABC/XYZ"
+    )
+
+    # ── Сезонность: NA в 2009/10, True/False в 2010/11 ──
     assert sku_period.loc[
         sku_period["Period"].eq("2009/10"), "repeated_peak_flag"
     ].isna().all()
 
-        # Точное число сезонных SKU зависит от нормализации StockCode.
+    # Точное число сезонных SKU зависит от нормализации StockCode.
     # Проверяем не конкретное значение, а структуру:
     #   - флаг определён только для 2010/11,
     #   - True и False оба присутствуют,
@@ -260,9 +275,13 @@ def validate(clean: pd.DataFrame, marts: dict) -> None:
     for col in required_new:
         assert col in sku_period.columns, f"Нет колонки {col} в MartSkuPeriod"
 
-    # sales_history: три непустых значения
-    assert sku_period["sales_history"].notna().all()
-    assert set(sku_period["sales_history"].astype(str).unique()).issubset(
+    # sales_history: заполнено у SKU с продажами.
+    # SKU с одними возвратами — NA.
+    has_sales = sku_period["revenue"] > 0
+    assert sku_period.loc[has_sales, "sales_history"].notna().all()
+    assert set(
+        sku_period.loc[has_sales, "sales_history"].astype(str).unique()
+    ).issubset(
         {
             "Продажи в обоих периодах",
             "Продажи только в первом",
@@ -271,13 +290,24 @@ def validate(clean: pd.DataFrame, marts: dict) -> None:
         }
     )
 
-    # limited_base_activity: NA в 2009/10, True/False в 2010/11
+    # limited_base_activity: NA в 2009/10; во втором периоде — значение
+    # есть только у SKU, которые были сопоставимы (продавались в 2009/10).
+    # SKU с одними возвратами во втором периоде — NA.
     assert sku_period.loc[
         sku_period["Period"].eq("2009/10"), "limited_base_activity"
     ].isna().all()
+
+    p2_with_base = (
+        sku_period["Period"].eq("2010/11")
+        & sku_period["sales_history"].isin(
+            ["Продажи в обоих периодах", "Продажи только в первом"]
+        )
+    )
     assert sku_period.loc[
-        sku_period["Period"].eq("2010/11"), "limited_base_activity"
-    ].notna().all()
+        p2_with_base, "limited_base_activity"
+    ].notna().all(), (
+        "У сопоставимых SKU во 2-м периоде нет limited_base_activity"
+    )
 
     # key_customer_share_pct: либо число, либо NA (нет известных покупателей)
     kcs = sku_period["key_customer_share_pct"]
@@ -287,7 +317,7 @@ def validate(clean: pd.DataFrame, marts: dict) -> None:
         "key_customer_share_pct должен быть NA, если известных покупателей нет"
     )
 
-        # Темпы роста определены, только если была база в 2009/10.
+    # Темпы роста определены, только если была база в 2009/10.
     # «Продажи только во втором» и «Нет продаж» — базы нет → NA.
     has_base = sku_period["sales_history"].isin(
         ["Продажи в обоих периодах", "Продажи только в первом"]

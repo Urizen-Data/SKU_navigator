@@ -4,8 +4,7 @@
 - ABC/XYZ — по положительным продажам;
 - сезонные пики — по каждому периоду отдельно + реальное пересечение;
 - RFM — по известным покупателям, границы баллов внутри периода;
-- сальдо — выручка продаж минус модуль возвратов;
-- sales_history, growth_pct, limited_base_activity — из годового сравнения.
+- сальдо — выручка продаж минус модуль возвратов.
 """
 
 import numpy as np
@@ -51,6 +50,36 @@ def build_features(clean: pd.DataFrame) -> dict:
          sku["cumulative_share_pct"] <= ABC_CUTS["B"]],
         ["A", "B"], default="C"
     )
+        # ── SKU, у которых есть только возвраты в периоде ──
+    # Из-за построения sku на продажах такие SKU выпадают.
+    # Добавляем их с пустой классификацией: ABC/XYZ остаётся NA.
+    # negative_amount будет присоединён позже, в блоке 6.
+    returns_only = (
+        clean.loc[clean["IsCancel"]]
+        .groupby(["Period", "StockCode"], observed=True)
+        .size()
+        .reset_index(name="_has_returns")
+    )
+
+    missing = returns_only.merge(
+        sku[["Period", "StockCode"]],
+        on=["Period", "StockCode"],
+        how="left",
+        indicator=True,
+    ).query("_merge == 'left_only'").drop(columns=["_merge", "_has_returns"])
+
+    if len(missing) > 0:
+        missing["ProductName"] = "Без продаж в периоде"
+        missing["revenue"] = 0.0
+        missing["units"] = 0
+        missing["orders"] = 0
+        missing["revenue_share_pct"] = np.nan
+        missing["cumulative_share_pct"] = np.nan
+        missing["ABC"] = pd.NA
+
+        sku = pd.concat([sku, missing], ignore_index=True)
+        sku = sku.reset_index(drop=True)
+        print(f"Добавлено SKU только с возвратами: {len(missing)}")
 
     # ─────────────────────────────────────────────
     # 2) SKU × месяц: продажи + возвраты (полный ряд)
@@ -180,8 +209,13 @@ def build_features(clean: pd.DataFrame) -> dict:
         name="sales_history",
     )
     sku["sales_history"] = sku["StockCode"].map(sales_history_map)
+        # Товары без продаж в первом периоде не имеют базы для сравнения.
+    # Рост относительно нуля не является ростом — это отдельный статус.
+    # ABC/XYZ у них остаётся, но BCG-класс не присваивается.
+    only_p2 = sku["sales_history"].eq("Продажи только во втором")
+    sku.loc[only_p2, "BCG_adapted"] = "Продажи только во втором"
 
-        # 4.2) Темп роста выручки — только для SKU с базой в первом периоде.
+    # 4.2) Темп роста выручки — только для SKU с базой в первом периоде.
     #      Для SKU без продаж в 2009/10 (только во втором) — NaN.
     rev_pivot_g = (
         sku.pivot(index="StockCode", columns="Period", values="revenue")
@@ -206,6 +240,8 @@ def build_features(clean: pd.DataFrame) -> dict:
     sku["units_growth_pct"] = sku["StockCode"].map(
         units_pivot["units_growth_pct"]
     )
+    print("\nBCG — распределение:")
+    print(sku["BCG_adapted"].value_counts(dropna=False))
 
     # ─────────────────────────────────────────────
     # 5) История товара и сезонные пики
@@ -284,6 +320,7 @@ def build_features(clean: pd.DataFrame) -> dict:
     sku["repeated_peak_flag"] = (
         sku["StockCode"]
         .map(seasonal_mask)
+        .fillna(False)                        # ← ДОБАВЛЕНО
         .where(sku["Period"].eq("2010/11"))
         .astype("boolean")
     )
@@ -304,11 +341,14 @@ def build_features(clean: pd.DataFrame) -> dict:
     sku["negative_amount"] = sku["negative_amount"].fillna(0)
     sku["sales_balance"] = sku["revenue"] - sku["negative_amount"]
     sku["negative_to_sales_pct"] = (
-        100 * sku["negative_amount"] / sku["revenue"]
-    )
+        100 * sku["negative_amount"]
+        / sku["revenue"].replace(0, np.nan)
+    ).fillna(0)
 
     # ─────────────────────────────────────────────
     # 7) RFM и клиентские метрики на SKU
+    #    R и M — квантили, но одинаковые значения получают одинаковый балл.
+    #    F — явные границы, чтобы клиент с одним заказом не попадал в Loyal.
     # ─────────────────────────────────────────────
     customer_sales = clean.loc[
         ~clean["IsCancel"] & clean["Customer ID"].notna()
@@ -332,20 +372,35 @@ def build_features(clean: pd.DataFrame) -> dict:
 
     for period, g in rfm.groupby("Period", observed=True):
         idx = g.index
+
+        # R — квантили, одинаковые значения → одинаковый балл
         rfm.loc[idx, "R_score"] = pd.qcut(
-            g["Recency"].rank(method="first"), 3, labels=[3, 2, 1]
+            g["Recency"].rank(method="dense"),
+            3, labels=[3, 2, 1], duplicates="drop"
         ).astype(int)
-        rfm.loc[idx, "F_score"] = pd.qcut(
-            g["Frequency"].rank(method="first"), 3, labels=[1, 2, 3]
-        ).astype(int)
+
+        # F — явные границы: 1 / 2–4 / 5+
+        rfm.loc[idx, "F_score"] = np.select(
+            [g["Frequency"] >= 5,
+             g["Frequency"] >= 2],
+            [3, 2],
+            default=1
+        )
+
+        # M — квантили, одинаковые значения → одинаковый балл
         rfm.loc[idx, "M_score"] = pd.qcut(
-            g["Monetary"].rank(method="first"), 3, labels=[1, 2, 3]
+            g["Monetary"].rank(method="dense"),
+            3, labels=[1, 2, 3], duplicates="drop"
         ).astype(int)
 
     r, f, m = rfm["R_score"], rfm["F_score"], rfm["M_score"]
+    freq = rfm["Frequency"]
+
+    # Loyal требует явного условия повторной покупки: Frequency >= 2.
+    # Клиент с одним заказом не может стать Loyal.
     rfm["RFM_segment"] = np.select(
         [r.eq(3) & f.eq(3) & m.eq(3),
-         r.ge(2) & f.ge(2),
+         r.ge(2) & f.ge(2) & freq.ge(2),
          r.eq(3) & f.eq(1),
          r.eq(1) & f.ge(2),
          r.eq(1)],
@@ -389,12 +444,19 @@ def build_features(clean: pd.DataFrame) -> dict:
         sku[["known_customer_revenue", "key_customer_revenue"]].fillna(0)
     )
 
+    # При revenue = 0 знаменатель → NaN, результат — NaN.
+    # Power BI читает NaN как BLANK, и DAX-сравнение BLANK >= 0
+    # даёт FALSE — SKU выпадает из счёта. Заполняем нулём,
+    # чтобы returns-only SKU корректно проходили фильтры сценариев.
     sku["customer_revenue_coverage_pct"] = (
-        100 * sku["known_customer_revenue"] / sku["revenue"]
-    )
+        100 * sku["known_customer_revenue"]
+        / sku["revenue"].replace(0, np.nan)
+    ).fillna(0)
+
     sku["key_customer_revenue_share_pct"] = (
-        100 * sku["key_customer_revenue"] / sku["revenue"]
-    )
+        100 * sku["key_customer_revenue"]
+        / sku["revenue"].replace(0, np.nan)
+    ).fillna(0)
 
     # 7.1) Доля ключевых покупателей среди известных покупателей SKU.
     #      Если известных нет — оставляем NA, а не 0.
