@@ -164,6 +164,11 @@ def build_marts(clean: pd.DataFrame, features: dict) -> dict:
 
         # BCG
         "BCG_adapted",
+
+        # Returns-only и отображение в карточке
+        "returns_only_flag",
+        "sold_in_previous_period",
+        "BCG_display",
     ]
 
     missing = [c for c in sku_period_cols if c not in sku_period.columns]

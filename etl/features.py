@@ -17,7 +17,14 @@ from .config import (
 
 
 def build_features(clean: pd.DataFrame) -> dict:
-    """Все аналитические витрины за один проход."""
+    """Все аналитические витрины за один проход.
+
+    Дополнительно к базовым витринам формируются:
+    - returns_only_flag — флаг SKU без продаж в периоде, но с возвратами;
+    - sold_in_previous_period — признак продаж SKU в первом периоде;
+    - BCG_display — отдельное поле для отображения в карточке товара
+      (BCG_adapted не меняется и продолжает использоваться в фильтрах).
+    """
     sales = clean.loc[~clean["IsCancel"]].copy()
 
     # ─────────────────────────────────────────────
@@ -54,6 +61,15 @@ def build_features(clean: pd.DataFrame) -> dict:
     # Из-за построения sku на продажах такие SKU выпадают.
     # Добавляем их с пустой классификацией: ABC/XYZ остаётся NA.
     # negative_amount будет присоединён позже, в блоке 6.
+
+        # Справочник имён по всем операциям (включая возвраты).
+    # Используется для returns-only, у которых нет продаж в периоде.
+    name_map = (
+        clean.dropna(subset=["Description"])
+        .drop_duplicates("StockCode")
+        .set_index("StockCode")["Description"]
+    )
+
     returns_only = (
         clean.loc[clean["IsCancel"]]
         .groupby(["Period", "StockCode"], observed=True)
@@ -69,7 +85,9 @@ def build_features(clean: pd.DataFrame) -> dict:
     ).query("_merge == 'left_only'").drop(columns=["_merge", "_has_returns"])
 
     if len(missing) > 0:
-        missing["ProductName"] = "Без продаж в периоде"
+        missing["ProductName"] = (
+            missing["StockCode"].map(name_map).fillna("Нет описания")
+        )
         missing["revenue"] = 0.0
         missing["units"] = 0
         missing["orders"] = 0
@@ -344,6 +362,41 @@ def build_features(clean: pd.DataFrame) -> dict:
         100 * sku["negative_amount"]
         / sku["revenue"].replace(0, np.nan)
     ).fillna(0)
+
+    # Флаг returns-only: нет продаж в периоде, но есть возвраты.
+    # Используется в DAX-пресетах Power BI и в карточке товара.
+    sku["returns_only_flag"] = (
+        sku["revenue"].eq(0)
+        & sku["negative_amount"].gt(0)
+    )
+
+    # ─────────────────────────────────────────────
+    # 6.1) Отображение для карточки товара
+    # ─────────────────────────────────────────────
+    # BCG_adapted не трогаем — он используется в фильтре growing.
+    # BCG_display — отдельное поле, показывается в карточке.
+    sold_in_p1 = set(
+        sales.loc[sales["Period"].eq("2009/10"), "StockCode"]
+    )
+    sku["sold_in_previous_period"] = sku["StockCode"].isin(sold_in_p1)
+
+    is_p2 = sku["Period"].eq("2010/11")
+    is_r_only = sku["returns_only_flag"].fillna(False)
+    has_p1 = sku["sold_in_previous_period"].fillna(False)
+
+    sku["BCG_display"] = sku["BCG_adapted"]
+
+    sku.loc[
+        is_p2 & is_r_only & has_p1, "BCG_display"
+    ] = "Returns only — продажи прекращены"
+
+    sku.loc[
+        is_p2 & is_r_only & ~has_p1, "BCG_display"
+    ] = "Returns only — нет истории продаж"
+
+    sku.loc[
+        ~is_p2 & is_r_only, "BCG_display"
+    ] = "Returns only — нет данных о более раннем периоде"
 
     # ─────────────────────────────────────────────
     # 7) RFM и клиентские метрики на SKU
